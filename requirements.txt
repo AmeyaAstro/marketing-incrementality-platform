@@ -5,3 +5,5 @@ matplotlib
 plotly
 scikit-learn
 duckdb
+scipy
+joblib
