@@ -8,3 +8,6 @@ duckdb
 scipy
 joblib
 pytest
+fastapi
+uvicorn
+httpx
