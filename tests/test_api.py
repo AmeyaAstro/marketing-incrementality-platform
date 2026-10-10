@@ -12,18 +12,6 @@ from pathlib import Path
 # ---------------------------------------------------------
 # Allow tests to import code from the project root
 # ---------------------------------------------------------
-#
-# tests/test_api.py lives inside:
-#
-# marketing-incrementality-platform/tests/
-#
-# parent.parent therefore gives us:
-#
-# marketing-incrementality-platform/
-#
-# Adding that directory to sys.path allows imports like:
-#
-# from api.main import app
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -40,9 +28,6 @@ from api.main import app  # noqa: E402
 # ---------------------------------------------------------
 # Create a test client
 # ---------------------------------------------------------
-#
-# This lets pytest call our API without starting
-# a real Uvicorn web server.
 
 client = TestClient(app)
 
@@ -98,8 +83,11 @@ def test_score_customer_endpoint():
     assert "conversion_probability" in body
     assert "uplift" in body
     assert "expected_spend" in body
+    assert "expected_profit" in body
+
     assert "recommended_for_conversion" in body
     assert "recommended_for_revenue" in body
+    assert "recommended_for_profit" in body
 
 
 # ---------------------------------------------------------
@@ -134,6 +122,11 @@ def test_api_recommendations_are_valid():
         in valid_actions
     )
 
+    assert (
+        body["recommended_for_profit"]
+        in valid_actions
+    )
+
 
 # ---------------------------------------------------------
 # Test 4:
@@ -151,5 +144,4 @@ def test_invalid_customer_request():
         json=invalid_customer,
     )
 
-    # FastAPI/Pydantic should reject missing required fields.
     assert response.status_code == 422

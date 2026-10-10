@@ -13,12 +13,14 @@ POST /score-customer
     - conversion probabilities
     - uplift estimates
     - expected spend
+    - expected profit
     - recommended action for conversion
     - recommended action for revenue
+    - recommended action for profit
 """
 
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.decision_engine import (
     load_artifacts,
@@ -36,18 +38,13 @@ app = FastAPI(
         "API for personalized marketing treatment recommendations "
         "using causal uplift models."
     ),
-    version="0.1.0",
+    version="0.2.0",
 )
 
 
 # ---------------------------------------------------------
 # Load trained artifacts once when the API starts
 # ---------------------------------------------------------
-#
-# We do NOT want to reload the models every time someone
-# sends a request.
-#
-# They are loaded once here and reused.
 
 artifacts = load_artifacts()
 
@@ -56,30 +53,61 @@ artifacts = load_artifacts()
 # Define the expected customer input
 # ---------------------------------------------------------
 #
-# Pydantic automatically validates incoming JSON.
+# The business assumptions below are optional.
 #
-# Example:
+# If the user does not provide them, the API uses:
 #
-# {
-#   "recency": 3,
-#   "history": 250.0,
-#   "mens": 1,
-#   "womens": 0,
-#   "zip_code": "Urban",
-#   "newbie": 0,
-#   "channel": "Web",
-#   "purchase_preference": "Mens Only"
-# }
+# email_cost = $0.01
+# gross_margin = 40%
+#
+# gross_margin should be written as a decimal:
+#
+# 0.40 = 40%
+# 0.25 = 25%
+# 0.60 = 60%
 
 class CustomerInput(BaseModel):
+
+    # -------------------------
+    # Customer features
+    # -------------------------
+
     recency: int
+
     history: float
+
     mens: int
+
     womens: int
+
     zip_code: str
+
     newbie: int
+
     channel: str
+
     purchase_preference: str
+
+
+    # -------------------------
+    # Business assumptions
+    # -------------------------
+
+    email_cost: float = Field(
+        default=0.01,
+        ge=0.0,
+        description="Cost of sending one marketing email.",
+    )
+
+    gross_margin: float = Field(
+        default=0.40,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Gross margin as a decimal. "
+            "Example: 0.40 means 40%."
+        ),
+    )
 
 
 # ---------------------------------------------------------
@@ -108,15 +136,42 @@ def score_customer_endpoint(
 ):
     """
     Score one customer under all three campaign actions.
+
+    The API uses both customer features and business assumptions
+    to produce conversion, revenue, and profit recommendations.
     """
 
-    # Convert validated Pydantic input into a normal dictionary.
-    customer_data = customer.model_dump()
+    # -----------------------------------------------------
+    # Separate customer features from business assumptions
+    # -----------------------------------------------------
+    #
+    # The machine-learning models were trained only on the
+    # customer features.
+    #
+    # email_cost and gross_margin are business assumptions,
+    # so they must NOT be passed into the scikit-learn model.
 
-    # Use the production decision engine.
+    customer_data = {
+        "recency": customer.recency,
+        "history": customer.history,
+        "mens": customer.mens,
+        "womens": customer.womens,
+        "zip_code": customer.zip_code,
+        "newbie": customer.newbie,
+        "channel": customer.channel,
+        "purchase_preference": customer.purchase_preference,
+    }
+
+
+    # -----------------------------------------------------
+    # Use the production decision engine
+    # -----------------------------------------------------
+
     result = score_customer(
         customer_data,
-        artifacts
+        artifacts,
+        email_cost=customer.email_cost,
+        gross_margin=customer.gross_margin,
     )
 
     return result

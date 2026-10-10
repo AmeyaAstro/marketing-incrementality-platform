@@ -1,8 +1,12 @@
 """
-Tests for the marketing decision engine.
+Tests for the Marketing Incrementality decision engine.
 
-These tests make sure the production scoring logic
-continues to work when we modify the project later.
+These tests verify that:
+- saved artifacts load correctly
+- customer scoring returns the expected structure
+- probabilities are valid
+- recommendations are valid
+- profit outputs are included
 """
 
 import sys
@@ -10,7 +14,7 @@ from pathlib import Path
 
 
 # ---------------------------------------------------------
-# Allow tests to import code from src/
+# Allow tests to import code from the project root
 # ---------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -45,22 +49,28 @@ EXAMPLE_CUSTOMER = {
 
 # ---------------------------------------------------------
 # Test 1:
-# saved artifacts should load successfully
+# saved artifacts should load correctly
 # ---------------------------------------------------------
 
 def test_load_artifacts():
 
     artifacts = load_artifacts()
 
-    assert "control_model" in artifacts
-    assert "mens_model" in artifacts
-    assert "womens_model" in artifacts
-    assert "purchase_values" in artifacts
+    expected_keys = {
+        "control_model",
+        "mens_model",
+        "womens_model",
+        "purchase_values",
+    }
+
+    assert expected_keys.issubset(
+        artifacts.keys()
+    )
 
 
 # ---------------------------------------------------------
 # Test 2:
-# scoring one customer should return all required outputs
+# score_customer should return the expected structure
 # ---------------------------------------------------------
 
 def test_score_customer_structure():
@@ -69,19 +79,22 @@ def test_score_customer_structure():
 
     result = score_customer(
         EXAMPLE_CUSTOMER,
-        artifacts
+        artifacts,
     )
 
     assert "conversion_probability" in result
     assert "uplift" in result
     assert "expected_spend" in result
+    assert "expected_profit" in result
+
     assert "recommended_for_conversion" in result
     assert "recommended_for_revenue" in result
+    assert "recommended_for_profit" in result
 
 
 # ---------------------------------------------------------
 # Test 3:
-# probabilities must be valid probabilities
+# predicted probabilities must be valid probabilities
 # ---------------------------------------------------------
 
 def test_probabilities_are_valid():
@@ -90,21 +103,21 @@ def test_probabilities_are_valid():
 
     result = score_customer(
         EXAMPLE_CUSTOMER,
-        artifacts
+        artifacts,
     )
 
     probabilities = result[
         "conversion_probability"
-    ].values()
+    ]
 
-    for probability in probabilities:
+    for probability in probabilities.values():
 
-        assert 0 <= probability <= 1
+        assert 0.0 <= probability <= 1.0
 
 
 # ---------------------------------------------------------
 # Test 4:
-# recommendation must be one of our valid actions
+# all recommendations must be valid campaign actions
 # ---------------------------------------------------------
 
 def test_recommendation_is_valid():
@@ -113,7 +126,7 @@ def test_recommendation_is_valid():
 
     result = score_customer(
         EXAMPLE_CUSTOMER,
-        artifacts
+        artifacts,
     )
 
     valid_actions = {
@@ -129,5 +142,10 @@ def test_recommendation_is_valid():
 
     assert (
         result["recommended_for_revenue"]
+        in valid_actions
+    )
+
+    assert (
+        result["recommended_for_profit"]
         in valid_actions
     )

@@ -10,9 +10,11 @@ This module:
    - Womens E-Mail
 3. Estimates treatment uplift.
 4. Estimates expected spend.
-5. Recommends the best campaign action for:
+5. Estimates expected profit using business assumptions.
+6. Recommends the best campaign action for:
    - conversion
    - revenue
+   - profit
 """
 
 from pathlib import Path
@@ -107,7 +109,12 @@ def load_artifacts():
 # Score one customer
 # ---------------------------------------------------------
 
-def score_customer(customer_data, artifacts):
+def score_customer(
+    customer_data,
+    artifacts,
+    email_cost=0.01,
+    gross_margin=0.40,
+):
     """
     Score one customer under all three possible campaign actions.
 
@@ -120,12 +127,21 @@ def score_customer(customer_data, artifacts):
     artifacts : dict
         Dictionary returned by load_artifacts().
 
+    email_cost : float, optional
+        Cost of sending one marketing email.
+        Default is $0.01.
+
+    gross_margin : float, optional
+        Fraction of revenue retained as gross profit.
+        Default is 0.40, meaning 40%.
+
     Returns
     -------
     dict
         Predicted conversion probabilities,
         uplift estimates,
         expected spend values,
+        expected profit values,
         and recommended actions.
     """
 
@@ -165,10 +181,10 @@ def score_customer(customer_data, artifacts):
     # Predict conversion probability under each action
     # -----------------------------------------------------
     #
-    # [:, 1] would mean:
-    # probability of class 1 = conversion.
+    # [0, 1] means:
     #
-    # Because we only have one row, we use [0, 1].
+    # row 0
+    # probability of class 1 = conversion
 
     prob_no_email = control_model.predict_proba(
         customer_df
@@ -187,7 +203,10 @@ def score_customer(customer_data, artifacts):
     # Estimate uplift relative to No E-Mail
     # -----------------------------------------------------
     #
+    # Example:
+    #
     # Men's uplift =
+    #
     # probability with Men's Email
     # -
     # probability with No Email
@@ -272,6 +291,48 @@ def score_customer(customer_data, artifacts):
 
 
     # -----------------------------------------------------
+    # Estimate expected profit under each treatment
+    # -----------------------------------------------------
+    #
+    # Revenue is not the same as profit.
+    #
+    # We first multiply expected revenue by the company's
+    # gross margin.
+    #
+    # For email treatments, we then subtract the cost
+    # of sending the marketing email.
+    #
+    # No E-Mail has no email delivery cost.
+    #
+    # Example:
+    #
+    # Expected profit =
+    # expected spend × gross margin - campaign cost
+
+    expected_profit_no_email = (
+        expected_spend_no_email
+        *
+        gross_margin
+    )
+
+    expected_profit_mens_email = (
+        expected_spend_mens_email
+        *
+        gross_margin
+        -
+        email_cost
+    )
+
+    expected_profit_womens_email = (
+        expected_spend_womens_email
+        *
+        gross_margin
+        -
+        email_cost
+    )
+
+
+    # -----------------------------------------------------
     # Choose the best action for conversion
     # -----------------------------------------------------
 
@@ -300,6 +361,25 @@ def score_customer(customer_data, artifacts):
     recommended_for_revenue = max(
         revenue_values,
         key=revenue_values.get
+    )
+
+
+    # -----------------------------------------------------
+    # Choose the best action for expected profit
+    # -----------------------------------------------------
+    #
+    # This is different from revenue optimization because
+    # treatment costs and gross margin are now considered.
+
+    profit_values = {
+        "No E-Mail": expected_profit_no_email,
+        "Mens E-Mail": expected_profit_mens_email,
+        "Womens E-Mail": expected_profit_womens_email,
+    }
+
+    recommended_for_profit = max(
+        profit_values,
+        key=profit_values.get
     )
 
 
@@ -341,11 +421,26 @@ def score_customer(customer_data, artifacts):
             ),
         },
 
+        "expected_profit": {
+            "No E-Mail": float(
+                expected_profit_no_email
+            ),
+            "Mens E-Mail": float(
+                expected_profit_mens_email
+            ),
+            "Womens E-Mail": float(
+                expected_profit_womens_email
+            ),
+        },
+
         "recommended_for_conversion":
             recommended_for_conversion,
 
         "recommended_for_revenue":
             recommended_for_revenue,
+
+        "recommended_for_profit":
+            recommended_for_profit,
     }
 
 
@@ -383,13 +478,22 @@ if __name__ == "__main__":
 
 
     # Score the customer.
+    #
+    # These business assumptions mean:
+    #
+    # email cost = $0.01 per send
+    # gross margin = 40%
+
     result = score_customer(
         example_customer,
-        artifacts
+        artifacts,
+        email_cost=0.01,
+        gross_margin=0.40,
     )
 
 
     # Show the recommendation.
+
     print(
         "\nCustomer recommendation:"
     )
