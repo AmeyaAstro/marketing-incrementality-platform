@@ -7,6 +7,9 @@ data/raw/*
 data/processed/*
 
 artifacts/*
-
+!artifacts/control_conversion_model.joblib
+!artifacts/mens_conversion_model.joblib
+!artifacts/womens_conversion_model.joblib
+!artifacts/purchase_value_summary.csv
 .env
 .DS_Store
