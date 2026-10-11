@@ -1,8 +1,12 @@
 """
 Tests for the Marketing Incrementality FastAPI application.
 
-These tests make sure the HTTP API correctly exposes
-the production decision engine.
+These tests verify:
+
+- health-check endpoint
+- single-customer scoring
+- campaign batch optimization
+- request validation
 """
 
 import sys
@@ -26,14 +30,14 @@ from api.main import app  # noqa: E402
 
 
 # ---------------------------------------------------------
-# Create a test client
+# Create test client
 # ---------------------------------------------------------
 
 client = TestClient(app)
 
 
 # ---------------------------------------------------------
-# Shared example customer
+# Shared single-customer example
 # ---------------------------------------------------------
 
 EXAMPLE_CUSTOMER = {
@@ -45,6 +49,46 @@ EXAMPLE_CUSTOMER = {
     "newbie": 0,
     "channel": "Web",
     "purchase_preference": "Mens Only",
+}
+
+
+# ---------------------------------------------------------
+# Shared batch example
+# ---------------------------------------------------------
+
+EXAMPLE_CAMPAIGN = {
+    "customers": [
+        {
+            "recency": 3,
+            "history": 250.0,
+            "mens": 1,
+            "womens": 0,
+            "zip_code": "Urban",
+            "newbie": 0,
+            "channel": "Web",
+        },
+        {
+            "recency": 6,
+            "history": 120.0,
+            "mens": 0,
+            "womens": 1,
+            "zip_code": "Suburban",
+            "newbie": 1,
+            "channel": "Phone",
+        },
+        {
+            "recency": 2,
+            "history": 500.0,
+            "mens": 1,
+            "womens": 1,
+            "zip_code": "Rural",
+            "newbie": 0,
+            "channel": "Multichannel",
+        },
+    ],
+    "max_emails": 2,
+    "email_cost": 0.01,
+    "gross_margin": 0.40,
 }
 
 
@@ -66,7 +110,7 @@ def test_root_endpoint():
 
 # ---------------------------------------------------------
 # Test 2:
-# scoring endpoint should return a valid response
+# single-customer scoring endpoint should work
 # ---------------------------------------------------------
 
 def test_score_customer_endpoint():
@@ -92,7 +136,7 @@ def test_score_customer_endpoint():
 
 # ---------------------------------------------------------
 # Test 3:
-# returned recommendations must be valid actions
+# returned single-customer recommendations must be valid
 # ---------------------------------------------------------
 
 def test_api_recommendations_are_valid():
@@ -130,7 +174,7 @@ def test_api_recommendations_are_valid():
 
 # ---------------------------------------------------------
 # Test 4:
-# invalid requests should be rejected automatically
+# invalid single-customer request should be rejected
 # ---------------------------------------------------------
 
 def test_invalid_customer_request():
@@ -145,3 +189,86 @@ def test_invalid_customer_request():
     )
 
     assert response.status_code == 422
+
+
+# ---------------------------------------------------------
+# Test 5:
+# campaign optimization endpoint should work
+# ---------------------------------------------------------
+
+def test_optimize_campaign_endpoint():
+
+    response = client.post(
+        "/optimize-campaign",
+        json=EXAMPLE_CAMPAIGN,
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert "summary" in body
+    assert "recommendations" in body
+
+    assert len(
+        body["recommendations"]
+    ) == 3
+
+
+# ---------------------------------------------------------
+# Test 6:
+# campaign optimizer must respect max_emails
+# ---------------------------------------------------------
+
+def test_campaign_optimizer_respects_limit():
+
+    response = client.post(
+        "/optimize-campaign",
+        json=EXAMPLE_CAMPAIGN,
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    summary = body["summary"]
+
+    assert (
+        summary["emails_selected"]
+        <=
+        EXAMPLE_CAMPAIGN["max_emails"]
+    )
+
+
+# ---------------------------------------------------------
+# Test 7:
+# campaign summary should include profit information
+# ---------------------------------------------------------
+
+def test_campaign_summary_contains_profit():
+
+    response = client.post(
+        "/optimize-campaign",
+        json=EXAMPLE_CAMPAIGN,
+    )
+
+    assert response.status_code == 200
+
+    summary = response.json()[
+        "summary"
+    ]
+
+    assert (
+        "baseline_expected_profit"
+        in summary
+    )
+
+    assert (
+        "optimized_expected_profit"
+        in summary
+    )
+
+    assert (
+        "incremental_expected_profit"
+        in summary
+    )

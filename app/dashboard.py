@@ -1,12 +1,18 @@
 """
 Streamlit dashboard for the Marketing Incrementality Platform.
 
-This frontend sends customer information and business assumptions
-to the FastAPI backend and displays personalized recommendations
-for conversion, revenue, and profit.
+The dashboard supports two workflows:
+
+1. Single Customer Recommendation
+2. Batch Campaign Optimizer
+
+The frontend communicates with the FastAPI backend.
 """
 
+import io
+
 import httpx
+import pandas as pd
 import streamlit as st
 
 
@@ -36,14 +42,9 @@ st.title("📈 Personalized Marketing Incrementality Platform")
 
 st.write(
     """
-    Estimate how different email campaigns may change a customer's
-    probability of purchasing, expected revenue, and expected profit.
-
-    The system compares three possible actions:
-
-    - No E-Mail
-    - Men's E-Mail
-    - Women's E-Mail
+    Use causal uplift models to compare different email actions,
+    estimate expected revenue and profit, and optimize campaign
+    targeting under limited marketing capacity.
     """
 )
 
@@ -51,454 +52,1033 @@ st.divider()
 
 
 # ---------------------------------------------------------
-# Customer input section
+# Dashboard mode
 # ---------------------------------------------------------
 
-st.subheader("Customer Profile")
+mode = st.radio(
+    "Choose workflow",
+    options=[
+        "Single Customer Recommendation",
+        "Batch Campaign Optimizer",
+    ],
+    horizontal=True,
+)
 
-col1, col2 = st.columns(2)
 
+# =========================================================
+# SINGLE CUSTOMER MODE
+# =========================================================
 
-# ---------------------------------------------------------
-# Left-side customer inputs
-# ---------------------------------------------------------
+if mode == "Single Customer Recommendation":
 
-with col1:
+    st.header("Single Customer Recommendation")
 
-    recency = st.number_input(
-        "Recency (months)",
-        min_value=0,
-        value=3,
-        step=1,
-        help="How recently the customer purchased.",
+    st.write(
+        """
+        Score one customer under:
+
+        - No E-Mail
+        - Men's E-Mail
+        - Women's E-Mail
+        """
     )
 
-    history = st.number_input(
-        "Historical Spend ($)",
-        min_value=0.0,
-        value=250.0,
-        step=10.0,
-        help="Customer's historical spending amount.",
+    st.divider()
+
+
+    # -----------------------------------------------------
+    # Customer profile
+    # -----------------------------------------------------
+
+    st.subheader("Customer Profile")
+
+    col1, col2 = st.columns(2)
+
+
+    with col1:
+
+        recency = st.number_input(
+            "Recency (months)",
+            min_value=0,
+            value=3,
+            step=1,
+        )
+
+        history = st.number_input(
+            "Historical Spend ($)",
+            min_value=0.0,
+            value=250.0,
+            step=10.0,
+        )
+
+        mens = st.selectbox(
+            "Previously Purchased Men's Products?",
+            options=[0, 1],
+            format_func=lambda x: (
+                "Yes" if x == 1 else "No"
+            ),
+        )
+
+        womens = st.selectbox(
+            "Previously Purchased Women's Products?",
+            options=[0, 1],
+            format_func=lambda x: (
+                "Yes" if x == 1 else "No"
+            ),
+        )
+
+
+    with col2:
+
+        zip_code = st.selectbox(
+            "Customer Location",
+            options=[
+                "Urban",
+                "Suburban",
+                "Rural",
+            ],
+        )
+
+        newbie = st.selectbox(
+            "New Customer?",
+            options=[0, 1],
+            format_func=lambda x: (
+                "Yes" if x == 1 else "No"
+            ),
+        )
+
+        channel = st.selectbox(
+            "Shopping Channel",
+            options=[
+                "Web",
+                "Phone",
+                "Multichannel",
+            ],
+        )
+
+
+    # -----------------------------------------------------
+    # Derive purchase preference
+    # -----------------------------------------------------
+
+    if mens == 1 and womens == 1:
+
+        purchase_preference = "Both"
+
+    elif mens == 1:
+
+        purchase_preference = "Mens Only"
+
+    elif womens == 1:
+
+        purchase_preference = "Womens Only"
+
+    else:
+
+        purchase_preference = "Neither"
+
+
+    st.caption(
+        f"Derived purchase preference: "
+        f"**{purchase_preference}**"
     )
 
-    mens = st.selectbox(
-        "Previously Purchased Men's Products?",
-        options=[0, 1],
-        format_func=lambda x: "Yes" if x == 1 else "No",
+
+    # -----------------------------------------------------
+    # Validate customer support
+    # -----------------------------------------------------
+
+    valid_purchase_history = not (
+        mens == 0 and womens == 0
     )
 
-    womens = st.selectbox(
-        "Previously Purchased Women's Products?",
-        options=[0, 1],
-        format_func=lambda x: "Yes" if x == 1 else "No",
+    if not valid_purchase_history:
+
+        st.warning(
+            """
+            This customer profile is outside the model's
+            training data.
+
+            Select at least one historical product category.
+            """
+        )
+
+
+    st.divider()
+
+
+    # -----------------------------------------------------
+    # Business assumptions
+    # -----------------------------------------------------
+
+    st.subheader("Business Assumptions")
+
+    business_col1, business_col2 = st.columns(2)
+
+
+    with business_col1:
+
+        email_cost = st.number_input(
+            "Email Cost per Customer ($)",
+            min_value=0.0,
+            value=0.01,
+            step=0.01,
+            format="%.2f",
+        )
+
+
+    with business_col2:
+
+        gross_margin_percent = st.number_input(
+            "Gross Margin (%)",
+            min_value=0.0,
+            max_value=100.0,
+            value=40.0,
+            step=1.0,
+        )
+
+
+    gross_margin = (
+        gross_margin_percent / 100.0
     )
 
 
-# ---------------------------------------------------------
-# Right-side customer inputs
-# ---------------------------------------------------------
-
-with col2:
-
-    zip_code = st.selectbox(
-        "Customer Location",
-        options=[
-            "Urban",
-            "Suburban",
-            "Rural",
-        ],
-    )
-
-    newbie = st.selectbox(
-        "New Customer?",
-        options=[0, 1],
-        format_func=lambda x: "Yes" if x == 1 else "No",
-    )
-
-    channel = st.selectbox(
-        "Shopping Channel",
-        options=[
-            "Web",
-            "Phone",
-            "Multichannel",
-        ],
-    )
+    st.divider()
 
 
-# ---------------------------------------------------------
-# Automatically derive purchase preference
-# ---------------------------------------------------------
+    # -----------------------------------------------------
+    # Score customer
+    # -----------------------------------------------------
 
-if mens == 1 and womens == 1:
-    purchase_preference = "Both"
+    if st.button(
+        "Generate Marketing Recommendation",
+        type="primary",
+        use_container_width=True,
+        disabled=not valid_purchase_history,
+    ):
 
-elif mens == 1:
-    purchase_preference = "Mens Only"
+        customer_data = {
+            "recency": recency,
+            "history": history,
+            "mens": mens,
+            "womens": womens,
+            "zip_code": zip_code,
+            "newbie": newbie,
+            "channel": channel,
+            "purchase_preference":
+                purchase_preference,
+            "email_cost": email_cost,
+            "gross_margin": gross_margin,
+        }
 
-elif womens == 1:
-    purchase_preference = "Womens Only"
+
+        try:
+
+            response = httpx.post(
+                f"{API_URL}/score-customer",
+                json=customer_data,
+                timeout=10.0,
+            )
+
+            response.raise_for_status()
+
+            result = response.json()
+
+
+            # ---------------------------------------------
+            # Main recommendations
+            # ---------------------------------------------
+
+            st.success(
+                "Customer scored successfully."
+            )
+
+            st.subheader("Recommended Actions")
+
+            recommendation_col1, \
+                recommendation_col2, \
+                recommendation_col3 = st.columns(3)
+
+
+            with recommendation_col1:
+
+                st.metric(
+                    "Best Action for Conversion",
+                    result[
+                        "recommended_for_conversion"
+                    ],
+                )
+
+
+            with recommendation_col2:
+
+                st.metric(
+                    "Best Action for Revenue",
+                    result[
+                        "recommended_for_revenue"
+                    ],
+                )
+
+
+            with recommendation_col3:
+
+                st.metric(
+                    "Best Action for Profit",
+                    result[
+                        "recommended_for_profit"
+                    ],
+                )
+
+
+            st.divider()
+
+
+            # ---------------------------------------------
+            # Conversion probabilities
+            # ---------------------------------------------
+
+            st.subheader(
+                "Predicted Conversion Probability"
+            )
+
+            probabilities = result[
+                "conversion_probability"
+            ]
+
+            prob_col1, prob_col2, prob_col3 = (
+                st.columns(3)
+            )
+
+
+            with prob_col1:
+
+                st.metric(
+                    "No E-Mail",
+                    f"{probabilities['No E-Mail']:.2%}",
+                )
+
+
+            with prob_col2:
+
+                st.metric(
+                    "Men's E-Mail",
+                    f"{probabilities['Mens E-Mail']:.2%}",
+                )
+
+
+            with prob_col3:
+
+                st.metric(
+                    "Women's E-Mail",
+                    f"{probabilities['Womens E-Mail']:.2%}",
+                )
+
+
+            # ---------------------------------------------
+            # Uplift
+            # ---------------------------------------------
+
+            st.subheader(
+                "Estimated Conversion Uplift"
+            )
+
+            uplift = result["uplift"]
+
+            uplift_col1, uplift_col2 = (
+                st.columns(2)
+            )
+
+
+            with uplift_col1:
+
+                st.metric(
+                    "Men's E-Mail vs No E-Mail",
+                    f"{uplift['Mens E-Mail']:.2%}",
+                )
+
+
+            with uplift_col2:
+
+                st.metric(
+                    "Women's E-Mail vs No E-Mail",
+                    f"{uplift['Womens E-Mail']:.2%}",
+                )
+
+
+            # ---------------------------------------------
+            # Expected spend
+            # ---------------------------------------------
+
+            st.subheader(
+                "Predicted Expected Spend per Customer"
+            )
+
+            spend = result["expected_spend"]
+
+            spend_col1, spend_col2, spend_col3 = (
+                st.columns(3)
+            )
+
+
+            with spend_col1:
+
+                st.metric(
+                    "No E-Mail",
+                    f"${spend['No E-Mail']:.2f}",
+                )
+
+
+            with spend_col2:
+
+                st.metric(
+                    "Men's E-Mail",
+                    f"${spend['Mens E-Mail']:.2f}",
+                )
+
+
+            with spend_col3:
+
+                st.metric(
+                    "Women's E-Mail",
+                    f"${spend['Womens E-Mail']:.2f}",
+                )
+
+
+            # ---------------------------------------------
+            # Expected profit
+            # ---------------------------------------------
+
+            st.subheader(
+                "Predicted Expected Profit per Customer"
+            )
+
+            profit = result["expected_profit"]
+
+            profit_col1, profit_col2, profit_col3 = (
+                st.columns(3)
+            )
+
+
+            with profit_col1:
+
+                st.metric(
+                    "No E-Mail",
+                    f"${profit['No E-Mail']:.2f}",
+                )
+
+
+            with profit_col2:
+
+                st.metric(
+                    "Men's E-Mail",
+                    f"${profit['Mens E-Mail']:.2f}",
+                )
+
+
+            with profit_col3:
+
+                st.metric(
+                    "Women's E-Mail",
+                    f"${profit['Womens E-Mail']:.2f}",
+                )
+
+
+            # ---------------------------------------------
+            # Interpretation
+            # ---------------------------------------------
+
+            st.info(
+                """
+                Individual uplift values are model-based
+                estimates, not directly observed causal
+                outcomes.
+
+                Use this system as decision support rather
+                than as certainty about an individual
+                customer.
+                """
+            )
+
+
+        except httpx.RequestError:
+
+            st.error(
+                """
+                Could not connect to the FastAPI backend.
+
+                Start it with:
+
+                `python -m uvicorn api.main:app --reload`
+                """
+            )
+
+
+        except httpx.HTTPStatusError as error:
+
+            st.error(
+                "API returned an error: "
+                f"{error.response.status_code}"
+            )
+
+
+# =========================================================
+# BATCH CAMPAIGN MODE
+# =========================================================
 
 else:
-    purchase_preference = "Neither"
 
+    st.header("Batch Campaign Optimizer")
 
-st.caption(
-    f"Derived purchase preference: **{purchase_preference}**"
-)
-
-
-# ---------------------------------------------------------
-# Validate purchase-history combination
-# ---------------------------------------------------------
-
-valid_purchase_history = not (
-    mens == 0 and womens == 0
-)
-
-if not valid_purchase_history:
-    st.warning(
+    st.write(
         """
-        This customer profile is outside the model's training data.
+        Upload a CSV containing many customers.
 
-        The original experiment does not contain customers with
-        neither men's nor women's historical purchases.
+        The platform will:
 
-        Select at least one previous product category before scoring.
+        1. Score each customer under every campaign action.
+        2. Estimate incremental expected profit.
+        3. Rank customers by expected economic benefit.
+        4. Select the best customers subject to a maximum
+           email limit.
         """
     )
 
-
-st.divider()
-
-
-# ---------------------------------------------------------
-# Business assumptions
-# ---------------------------------------------------------
-
-st.subheader("Business Assumptions")
-
-st.write(
-    """
-    These values do not change the machine-learning predictions.
-    They change how the system translates predicted revenue into
-    expected profit.
-    """
-)
-
-business_col1, business_col2 = st.columns(2)
+    st.divider()
 
 
-with business_col1:
+    # -----------------------------------------------------
+    # Expected input format
+    # -----------------------------------------------------
 
-    email_cost = st.number_input(
-        "Email Cost per Customer ($)",
-        min_value=0.0,
-        value=0.01,
-        step=0.01,
-        format="%.2f",
-        help=(
-            "Estimated cost of sending one marketing email "
-            "to one customer."
-        ),
+    st.subheader("CSV Format")
+
+    st.write(
+        """
+        Your CSV must contain these columns:
+        """
+    )
+
+    required_columns_display = pd.DataFrame(
+        {
+            "column": [
+                "recency",
+                "history",
+                "mens",
+                "womens",
+                "zip_code",
+                "newbie",
+                "channel",
+            ],
+            "example": [
+                3,
+                250.0,
+                1,
+                0,
+                "Urban",
+                0,
+                "Web",
+            ],
+        }
+    )
+
+    st.dataframe(
+        required_columns_display,
+        use_container_width=True,
+        hide_index=True,
     )
 
 
-with business_col2:
+    # -----------------------------------------------------
+    # Provide example CSV
+    # -----------------------------------------------------
 
-    gross_margin_percent = st.number_input(
-        "Gross Margin (%)",
-        min_value=0.0,
-        max_value=100.0,
-        value=40.0,
-        step=1.0,
-        help=(
-            "Percentage of revenue retained as gross profit "
-            "before email campaign cost."
-        ),
+    example_df = pd.DataFrame(
+        [
+            {
+                "recency": 3,
+                "history": 250.0,
+                "mens": 1,
+                "womens": 0,
+                "zip_code": "Urban",
+                "newbie": 0,
+                "channel": "Web",
+            },
+            {
+                "recency": 6,
+                "history": 120.0,
+                "mens": 0,
+                "womens": 1,
+                "zip_code": "Suburban",
+                "newbie": 1,
+                "channel": "Phone",
+            },
+            {
+                "recency": 2,
+                "history": 500.0,
+                "mens": 1,
+                "womens": 1,
+                "zip_code": "Rural",
+                "newbie": 0,
+                "channel": "Multichannel",
+            },
+        ]
     )
 
 
-# Convert percentage into decimal expected by the API.
-#
-# Example:
-#
-# 40% -> 0.40
-
-gross_margin = gross_margin_percent / 100.0
+    example_csv = (
+        example_df
+        .to_csv(index=False)
+        .encode("utf-8")
+    )
 
 
-st.divider()
+    st.download_button(
+        "Download Example CSV",
+        data=example_csv,
+        file_name="example_customers.csv",
+        mime="text/csv",
+    )
 
 
-# ---------------------------------------------------------
-# Score customer
-# ---------------------------------------------------------
-
-if st.button(
-    "Generate Marketing Recommendation",
-    type="primary",
-    use_container_width=True,
-    disabled=not valid_purchase_history,
-):
-
-    customer_data = {
-        "recency": recency,
-        "history": history,
-        "mens": mens,
-        "womens": womens,
-        "zip_code": zip_code,
-        "newbie": newbie,
-        "channel": channel,
-        "purchase_preference": purchase_preference,
-
-        # Business assumptions
-        "email_cost": email_cost,
-        "gross_margin": gross_margin,
-    }
-
-    try:
-
-        # -------------------------------------------------
-        # Send request to FastAPI backend
-        # -------------------------------------------------
-
-        response = httpx.post(
-            f"{API_URL}/score-customer",
-            json=customer_data,
-            timeout=10.0,
-        )
-
-        response.raise_for_status()
-
-        result = response.json()
+    st.divider()
 
 
-        # -------------------------------------------------
-        # Success message
-        # -------------------------------------------------
+    # -----------------------------------------------------
+    # Upload customer CSV
+    # -----------------------------------------------------
+
+    uploaded_file = st.file_uploader(
+        "Upload Customer CSV",
+        type=["csv"],
+    )
+
+
+    if uploaded_file is not None:
+
+        try:
+
+            customers_df = pd.read_csv(
+                uploaded_file
+            )
+
+        except Exception as error:
+
+            st.error(
+                f"Could not read CSV: {error}"
+            )
+
+            st.stop()
+
 
         st.success(
-            "Customer scored successfully."
+            f"Loaded {len(customers_df):,} customers."
         )
 
 
-        # -------------------------------------------------
-        # Main recommendations
-        # -------------------------------------------------
+        st.subheader("Uploaded Customer Preview")
 
-        st.subheader("Recommended Actions")
-
-        recommendation_col1, recommendation_col2, recommendation_col3 = (
-            st.columns(3)
+        st.dataframe(
+            customers_df.head(20),
+            use_container_width=True,
         )
-
-        with recommendation_col1:
-
-            st.metric(
-                "Best Action for Conversion",
-                result["recommended_for_conversion"],
-            )
-
-        with recommendation_col2:
-
-            st.metric(
-                "Best Action for Revenue",
-                result["recommended_for_revenue"],
-            )
-
-        with recommendation_col3:
-
-            st.metric(
-                "Best Action for Profit",
-                result["recommended_for_profit"],
-            )
 
 
         st.divider()
 
 
         # -------------------------------------------------
-        # Conversion probabilities
+        # Campaign settings
         # -------------------------------------------------
 
-        st.subheader("Predicted Conversion Probability")
+        st.subheader("Campaign Settings")
 
-        probabilities = result[
-            "conversion_probability"
-        ]
+        settings_col1, \
+            settings_col2, \
+            settings_col3 = st.columns(3)
 
-        prob_col1, prob_col2, prob_col3 = st.columns(3)
 
-        with prob_col1:
+        with settings_col1:
 
-            st.metric(
-                "No E-Mail",
-                f"{probabilities['No E-Mail']:.2%}",
-            )
-
-        with prob_col2:
-
-            st.metric(
-                "Men's E-Mail",
-                f"{probabilities['Mens E-Mail']:.2%}",
-            )
-
-        with prob_col3:
-
-            st.metric(
-                "Women's E-Mail",
-                f"{probabilities['Womens E-Mail']:.2%}",
+            max_emails = st.number_input(
+                "Maximum Emails",
+                min_value=0,
+                max_value=int(
+                    len(customers_df)
+                ),
+                value=min(
+                    100,
+                    len(customers_df),
+                ),
+                step=1,
             )
 
 
-        # -------------------------------------------------
-        # Causal uplift
-        # -------------------------------------------------
+        with settings_col2:
 
-        st.subheader("Estimated Conversion Uplift")
-
-        uplift = result[
-            "uplift"
-        ]
-
-        uplift_col1, uplift_col2 = st.columns(2)
-
-        with uplift_col1:
-
-            st.metric(
-                "Men's E-Mail vs No E-Mail",
-                f"{uplift['Mens E-Mail']:.2%}",
-            )
-
-        with uplift_col2:
-
-            st.metric(
-                "Women's E-Mail vs No E-Mail",
-                f"{uplift['Womens E-Mail']:.2%}",
+            batch_email_cost = st.number_input(
+                "Email Cost per Customer ($)",
+                min_value=0.0,
+                value=0.01,
+                step=0.01,
+                format="%.2f",
+                key="batch_email_cost",
             )
 
 
-        # -------------------------------------------------
-        # Expected revenue
-        # -------------------------------------------------
+        with settings_col3:
 
-        st.subheader("Predicted Expected Spend per Customer")
-
-        spend = result[
-            "expected_spend"
-        ]
-
-        spend_col1, spend_col2, spend_col3 = st.columns(3)
-
-        with spend_col1:
-
-            st.metric(
-                "No E-Mail",
-                f"${spend['No E-Mail']:.2f}",
-            )
-
-        with spend_col2:
-
-            st.metric(
-                "Men's E-Mail",
-                f"${spend['Mens E-Mail']:.2f}",
-            )
-
-        with spend_col3:
-
-            st.metric(
-                "Women's E-Mail",
-                f"${spend['Womens E-Mail']:.2f}",
+            batch_margin_percent = st.number_input(
+                "Gross Margin (%)",
+                min_value=0.0,
+                max_value=100.0,
+                value=40.0,
+                step=1.0,
+                key="batch_margin",
             )
 
 
-        # -------------------------------------------------
-        # Expected profit
-        # -------------------------------------------------
-
-        st.subheader("Predicted Expected Profit per Customer")
-
-        profit = result[
-            "expected_profit"
-        ]
-
-        profit_col1, profit_col2, profit_col3 = st.columns(3)
-
-        with profit_col1:
-
-            st.metric(
-                "No E-Mail",
-                f"${profit['No E-Mail']:.2f}",
-            )
-
-        with profit_col2:
-
-            st.metric(
-                "Men's E-Mail",
-                f"${profit['Mens E-Mail']:.2f}",
-            )
-
-        with profit_col3:
-
-            st.metric(
-                "Women's E-Mail",
-                f"${profit['Womens E-Mail']:.2f}",
-            )
-
-
-        # -------------------------------------------------
-        # Business interpretation
-        # -------------------------------------------------
-
-        st.subheader("Business Interpretation")
-
-        st.write(
-            f"""
-            The profit recommendation uses:
-
-            - **Email cost:** ${email_cost:.2f} per customer
-            - **Gross margin:** {gross_margin_percent:.1f}%
-
-            Expected profit is calculated as:
-
-            **Expected Revenue × Gross Margin − Campaign Cost**
-            """
+        batch_gross_margin = (
+            batch_margin_percent / 100.0
         )
 
 
+        st.divider()
+
+
         # -------------------------------------------------
-        # Important model interpretation note
+        # Run optimization
         # -------------------------------------------------
 
-        st.info(
-            """
-            **Interpretation:** These are model-based estimates.
+        if st.button(
+            "Optimize Campaign",
+            type="primary",
+            use_container_width=True,
+        ):
 
-            Individual uplift is not directly observable ground truth.
-            The platform should be used as a decision-support system,
-            especially for ranking customers or budget-constrained
-            campaign targeting.
+            required_columns = {
+                "recency",
+                "history",
+                "mens",
+                "womens",
+                "zip_code",
+                "newbie",
+                "channel",
+            }
 
-            Revenue and profit estimates depend on the assumptions
-            entered above.
-            """
-        )
+
+            missing_columns = (
+                required_columns
+                -
+                set(customers_df.columns)
+            )
 
 
-    except httpx.RequestError:
+            if missing_columns:
 
-        st.error(
-            """
-            Could not connect to the FastAPI backend.
+                st.error(
+                    "Missing required columns: "
+                    +
+                    ", ".join(
+                        sorted(
+                            missing_columns
+                        )
+                    )
+                )
 
-            Make sure the API is running with:
+                st.stop()
 
-            `python -m uvicorn api.main:app --reload`
-            """
-        )
 
-    except httpx.HTTPStatusError as error:
+            # ---------------------------------------------
+            # Convert customer rows into JSON
+            # ---------------------------------------------
 
-        st.error(
-            f"API returned an error: {error.response.status_code}"
-        )
+            customer_records = (
+                customers_df[
+                    [
+                        "recency",
+                        "history",
+                        "mens",
+                        "womens",
+                        "zip_code",
+                        "newbie",
+                        "channel",
+                    ]
+                ]
+                .to_dict(
+                    orient="records"
+                )
+            )
+
+
+            campaign_request = {
+                "customers":
+                    customer_records,
+
+                "max_emails":
+                    int(max_emails),
+
+                "email_cost":
+                    float(
+                        batch_email_cost
+                    ),
+
+                "gross_margin":
+                    float(
+                        batch_gross_margin
+                    ),
+            }
+
+
+            try:
+
+                with st.spinner(
+                    "Scoring customers and "
+                    "optimizing campaign..."
+                ):
+
+                    response = httpx.post(
+                        f"{API_URL}/optimize-campaign",
+                        json=campaign_request,
+                        timeout=60.0,
+                    )
+
+
+                response.raise_for_status()
+
+                result = response.json()
+
+                summary = result["summary"]
+
+                recommendations_df = (
+                    pd.DataFrame(
+                        result[
+                            "recommendations"
+                        ]
+                    )
+                )
+
+
+                # -----------------------------------------
+                # Campaign summary
+                # -----------------------------------------
+
+                st.success(
+                    "Campaign optimization complete."
+                )
+
+                st.subheader(
+                    "Campaign Summary"
+                )
+
+
+                summary_col1, \
+                    summary_col2, \
+                    summary_col3 = st.columns(3)
+
+
+                with summary_col1:
+
+                    st.metric(
+                        "Total Customers",
+                        summary[
+                            "total_customers"
+                        ],
+                    )
+
+
+                with summary_col2:
+
+                    st.metric(
+                        "Emails Selected",
+                        summary[
+                            "emails_selected"
+                        ],
+                    )
+
+
+                with summary_col3:
+
+                    st.metric(
+                        "Campaign Capacity",
+                        summary[
+                            "max_emails"
+                        ],
+                    )
+
+
+                profit_col1, \
+                    profit_col2, \
+                    profit_col3 = st.columns(3)
+
+
+                with profit_col1:
+
+                    st.metric(
+                        "Baseline Expected Profit",
+                        "$"
+                        f"{summary['baseline_expected_profit']:.2f}",
+                    )
+
+
+                with profit_col2:
+
+                    st.metric(
+                        "Optimized Expected Profit",
+                        "$"
+                        f"{summary['optimized_expected_profit']:.2f}",
+                    )
+
+
+                with profit_col3:
+
+                    st.metric(
+                        "Incremental Expected Profit",
+                        "$"
+                        f"{summary['incremental_expected_profit']:.2f}",
+                    )
+
+
+                st.divider()
+
+
+                # -----------------------------------------
+                # Selected customers only
+                # -----------------------------------------
+
+                st.subheader(
+                    "Customers Selected for Campaign"
+                )
+
+
+                selected_df = (
+                    recommendations_df[
+                        recommendations_df[
+                            "selected_for_campaign"
+                        ]
+                    ]
+                    .copy()
+                )
+
+
+                if selected_df.empty:
+
+                    st.warning(
+                        """
+                        No customers had positive enough
+                        expected profit to justify sending
+                        an email under the current business
+                        assumptions.
+                        """
+                    )
+
+                else:
+
+                    selected_display_columns = [
+                        "batch_row",
+                        "purchase_preference",
+                        "best_email_action",
+                        "incremental_profit",
+                        "final_recommended_action",
+                    ]
+
+
+                    st.dataframe(
+                        selected_df[
+                            selected_display_columns
+                        ],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+
+                st.divider()
+
+
+                # -----------------------------------------
+                # Full recommendation table
+                # -----------------------------------------
+
+                st.subheader(
+                    "Full Customer Recommendations"
+                )
+
+
+                st.dataframe(
+                    recommendations_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+
+                # -----------------------------------------
+                # Download optimized results
+                # -----------------------------------------
+
+                output_buffer = io.StringIO()
+
+                recommendations_df.to_csv(
+                    output_buffer,
+                    index=False,
+                )
+
+
+                st.download_button(
+                    "Download Optimized Campaign CSV",
+                    data=output_buffer.getvalue(),
+                    file_name=(
+                        "optimized_campaign.csv"
+                    ),
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+
+
+                # -----------------------------------------
+                # Interpretation
+                # -----------------------------------------
+
+                st.info(
+                    """
+                    The optimizer ranks customers by
+                    **incremental expected profit**.
+
+                    Customers with negative incremental
+                    expected profit are not contacted even
+                    if unused campaign capacity remains.
+
+                    These values are model-based decision
+                    estimates and should be validated in
+                    future randomized campaigns.
+                    """
+                )
+
+
+            except httpx.RequestError:
+
+                st.error(
+                    """
+                    Could not connect to the FastAPI backend.
+
+                    Start it with:
+
+                    `python -m uvicorn api.main:app --reload`
+                    """
+                )
+
+
+            except httpx.HTTPStatusError as error:
+
+                st.error(
+                    "API returned an error: "
+                    f"{error.response.status_code}"
+                )
+
+                try:
+
+                    st.json(
+                        error.response.json()
+                    )
+
+                except Exception:
+
+                    pass
