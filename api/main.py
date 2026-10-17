@@ -11,15 +11,21 @@ POST /score-customer
 
 POST /optimize-campaign
     Score many customers and optimize who should receive
-    an email under a campaign capacity limit.
+    an email under a maximum campaign size.
+
+POST /optimize-campaign-budget
+    Score many customers and optimize who should receive
+    an email under a total dollar campaign budget.
 """
 
 from typing import List
 
+import pandas as pd
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 from src.batch_optimizer import (
+    optimize_campaign_budget,
     optimize_email_budget,
     score_customer_batch,
 )
@@ -39,7 +45,7 @@ app = FastAPI(
         "API for personalized marketing treatment recommendations "
         "and budget-constrained campaign optimization."
     ),
-    version="0.3.0",
+    version="0.4.0",
 )
 
 
@@ -80,10 +86,10 @@ class CustomerInput(BaseModel):
 
 
 # ---------------------------------------------------------
-# Batch customer model
+# Batch customer input model
 # ---------------------------------------------------------
 #
-# Notice that purchase_preference is NOT required here.
+# purchase_preference is intentionally NOT required here.
 #
 # The batch optimizer derives it automatically from:
 #
@@ -104,6 +110,8 @@ class BatchCustomerInput(BaseModel):
 # ---------------------------------------------------------
 # Campaign optimization request
 # ---------------------------------------------------------
+#
+# This version uses a maximum number of emails.
 
 class CampaignOptimizationInput(BaseModel):
 
@@ -114,6 +122,38 @@ class CampaignOptimizationInput(BaseModel):
         description=(
             "Maximum number of customers who can "
             "receive an email."
+        ),
+    )
+
+    email_cost: float = Field(
+        default=0.01,
+        ge=0.0,
+        description="Cost of sending one email.",
+    )
+
+    gross_margin: float = Field(
+        default=0.40,
+        ge=0.0,
+        le=1.0,
+        description="Gross margin as a decimal.",
+    )
+
+
+# ---------------------------------------------------------
+# Dollar-budget optimization request
+# ---------------------------------------------------------
+#
+# This version uses an actual total campaign budget.
+
+class CampaignBudgetInput(BaseModel):
+
+    customers: List[BatchCustomerInput]
+
+    campaign_budget: float = Field(
+        ge=0.0,
+        description=(
+            "Maximum total dollars available "
+            "for the email campaign."
         ),
     )
 
@@ -184,6 +224,9 @@ def score_customer_endpoint(
 # ---------------------------------------------------------
 # Campaign optimization endpoint
 # ---------------------------------------------------------
+#
+# Constraint:
+# maximum number of emails
 
 @app.post("/optimize-campaign")
 def optimize_campaign_endpoint(
@@ -196,9 +239,7 @@ def optimize_campaign_endpoint(
     Customers are ranked by incremental expected profit.
     """
 
-    # -----------------------------------------------------
-    # Convert validated Pydantic customers into dictionaries
-    # -----------------------------------------------------
+    # Convert validated Pydantic objects into dictionaries.
 
     customer_records = [
         customer.model_dump()
@@ -206,20 +247,14 @@ def optimize_campaign_endpoint(
     ]
 
 
-    # -----------------------------------------------------
-    # Convert list of dictionaries into DataFrame
-    # -----------------------------------------------------
-
-    import pandas as pd
+    # Convert records into a DataFrame.
 
     customers_df = pd.DataFrame(
         customer_records
     )
 
 
-    # -----------------------------------------------------
-    # Score every customer
-    # -----------------------------------------------------
+    # Score every customer.
 
     scored_customers = score_customer_batch(
         customers_df,
@@ -229,9 +264,7 @@ def optimize_campaign_endpoint(
     )
 
 
-    # -----------------------------------------------------
-    # Apply campaign capacity constraint
-    # -----------------------------------------------------
+    # Optimize under maximum-email constraint.
 
     optimization_result = optimize_email_budget(
         scored_customers,
@@ -248,9 +281,85 @@ def optimize_campaign_endpoint(
     ]
 
 
-    # -----------------------------------------------------
-    # Convert DataFrame into JSON-safe records
-    # -----------------------------------------------------
+    # Convert DataFrame into JSON-safe records.
+
+    recommendations = (
+        recommendations_df
+        .to_dict(
+            orient="records"
+        )
+    )
+
+
+    return {
+        "summary": summary,
+        "recommendations": recommendations,
+    }
+
+
+# ---------------------------------------------------------
+# Dollar-budget campaign optimization endpoint
+# ---------------------------------------------------------
+#
+# Constraint:
+# total campaign budget in dollars
+
+@app.post("/optimize-campaign-budget")
+def optimize_campaign_budget_endpoint(
+    campaign: CampaignBudgetInput
+):
+    """
+    Score a batch of customers and optimize targeting
+    under a total dollar campaign budget.
+
+    Customers are still ranked by incremental expected profit.
+    The budget determines how many emails are affordable.
+    """
+
+    # Convert validated Pydantic objects into dictionaries.
+
+    customer_records = [
+        customer.model_dump()
+        for customer in campaign.customers
+    ]
+
+
+    # Convert records into a DataFrame.
+
+    customers_df = pd.DataFrame(
+        customer_records
+    )
+
+
+    # Score every customer.
+
+    scored_customers = score_customer_batch(
+        customers_df,
+        artifacts,
+        email_cost=campaign.email_cost,
+        gross_margin=campaign.gross_margin,
+    )
+
+
+    # Optimize using the total dollar budget.
+
+    optimization_result = optimize_campaign_budget(
+        scored_customers,
+        campaign_budget=campaign.campaign_budget,
+        email_cost=campaign.email_cost,
+    )
+
+
+    recommendations_df = optimization_result[
+        "recommendations"
+    ]
+
+    summary = optimization_result[
+        "summary"
+    ]
+
+
+    # Convert DataFrame into JSON-safe records.
 
     recommendations = (
         recommendations_df

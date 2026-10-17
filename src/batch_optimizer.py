@@ -9,7 +9,7 @@ The optimization objective is incremental expected profit.
 """
 
 import pandas as pd
-
+from decimal import Decimal
 from src.decision_engine import score_customer
 
 
@@ -504,5 +504,163 @@ def optimize_email_budget(
 
     return {
         "recommendations": optimized,
+        "summary": summary,
+    }
+
+# ---------------------------------------------------------
+# Optimize using a dollar campaign budget
+# ---------------------------------------------------------
+
+def optimize_campaign_budget(
+    scored_customers,
+    campaign_budget,
+    email_cost,
+):
+    """
+    Optimize a campaign using a total dollar budget.
+
+    Parameters
+    ----------
+    scored_customers : pandas.DataFrame
+        Output produced by score_customer_batch().
+
+    campaign_budget : float
+        Maximum total dollars available for email sends.
+
+    email_cost : float
+        Cost of sending one email.
+
+    Returns
+    -------
+    dict
+        Contains customer-level recommendations and an
+        expanded campaign summary.
+    """
+
+    # -----------------------------------------------------
+    # Validate business inputs
+    # -----------------------------------------------------
+
+    if campaign_budget < 0:
+
+        raise ValueError(
+            "campaign_budget must be zero or greater."
+        )
+
+    if email_cost < 0:
+
+        raise ValueError(
+            "email_cost must be zero or greater."
+        )
+
+
+    # -----------------------------------------------------
+    # Convert dollar budget into campaign capacity
+    # -----------------------------------------------------
+    #
+    # Example:
+    #
+    # budget = $10
+    # cost = $0.05
+    #
+    # affordable emails = 200
+
+    if email_cost == 0:
+
+        # If sending an email costs nothing, budget does not
+        # restrict the number of customers we can contact.
+
+        max_affordable_emails = len(
+            scored_customers
+        )
+
+    else:
+
+        max_affordable_emails = int(
+        Decimal(str(campaign_budget))
+        /
+        Decimal(str(email_cost))
+    )
+
+
+    # -----------------------------------------------------
+    # Reuse our existing optimizer
+    # -----------------------------------------------------
+    #
+    # This avoids duplicating ranking logic.
+
+    result = optimize_email_budget(
+        scored_customers,
+        max_emails=max_affordable_emails,
+    )
+
+
+    recommendations = result[
+        "recommendations"
+    ]
+
+    summary = result[
+        "summary"
+    ]
+
+
+    # -----------------------------------------------------
+    # Calculate actual campaign spending
+    # -----------------------------------------------------
+
+    emails_selected = summary[
+        "emails_selected"
+    ]
+
+    campaign_spend = (
+        emails_selected
+        *
+        email_cost
+    )
+
+    budget_remaining = (
+        campaign_budget
+        -
+        campaign_spend
+    )
+
+
+    # -----------------------------------------------------
+    # Add budget-specific metrics
+    # -----------------------------------------------------
+
+    summary[
+        "campaign_budget"
+    ] = float(
+        campaign_budget
+    )
+
+    summary[
+        "email_cost"
+    ] = float(
+        email_cost
+    )
+
+    summary[
+        "max_affordable_emails"
+    ] = int(
+        max_affordable_emails
+    )
+
+    summary[
+        "campaign_spend"
+    ] = float(
+        campaign_spend
+    )
+
+    summary[
+        "budget_remaining"
+    ] = float(
+        budget_remaining
+    )
+
+
+    return {
+        "recommendations": recommendations,
         "summary": summary,
     }

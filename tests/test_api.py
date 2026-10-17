@@ -272,3 +272,98 @@ def test_campaign_summary_contains_profit():
         "incremental_expected_profit"
         in summary
     )
+
+# ---------------------------------------------------------
+# Test 8:
+# dollar-budget campaign endpoint should work
+# ---------------------------------------------------------
+
+def test_optimize_campaign_budget_endpoint():
+
+    budget_request = {
+        "customers": EXAMPLE_CAMPAIGN["customers"],
+        "campaign_budget": 1.00,
+        "email_cost": 0.50,
+        "gross_margin": 0.40,
+    }
+
+    response = client.post(
+        "/optimize-campaign-budget",
+        json=budget_request,
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert "summary" in body
+    assert "recommendations" in body
+
+
+# ---------------------------------------------------------
+# Test 9:
+# campaign spending must not exceed dollar budget
+# ---------------------------------------------------------
+
+def test_budget_endpoint_respects_dollar_limit():
+
+    budget_request = {
+        "customers": EXAMPLE_CAMPAIGN["customers"],
+        "campaign_budget": 1.00,
+        "email_cost": 0.50,
+        "gross_margin": 0.40,
+    }
+
+    response = client.post(
+        "/optimize-campaign-budget",
+        json=budget_request,
+    )
+
+    assert response.status_code == 200
+
+    summary = response.json()[
+        "summary"
+    ]
+
+    assert (
+        summary["campaign_spend"]
+        <=
+        summary["campaign_budget"]
+    )
+
+    assert (
+        summary["max_affordable_emails"]
+        ==
+        2
+    )
+
+
+# ---------------------------------------------------------
+# Test 10:
+# budget summary should contain financial metrics
+# ---------------------------------------------------------
+
+def test_budget_endpoint_summary_fields():
+
+    budget_request = {
+        "customers": EXAMPLE_CAMPAIGN["customers"],
+        "campaign_budget": 1.00,
+        "email_cost": 0.50,
+        "gross_margin": 0.40,
+    }
+
+    response = client.post(
+        "/optimize-campaign-budget",
+        json=budget_request,
+    )
+
+    assert response.status_code == 200
+
+    summary = response.json()[
+        "summary"
+    ]
+
+    assert "campaign_budget" in summary
+    assert "campaign_spend" in summary
+    assert "budget_remaining" in summary
+    assert "max_affordable_emails" in summary

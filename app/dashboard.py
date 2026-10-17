@@ -6,6 +6,11 @@ The dashboard supports two workflows:
 1. Single Customer Recommendation
 2. Batch Campaign Optimizer
 
+Batch campaign optimization supports:
+
+- Maximum-email capacity constraints
+- Dollar-budget constraints
+
 The frontend communicates with the FastAPI backend.
 """
 
@@ -44,7 +49,7 @@ st.write(
     """
     Use causal uplift models to compare different email actions,
     estimate expected revenue and profit, and optimize campaign
-    targeting under limited marketing capacity.
+    targeting under limited marketing capacity or budget.
     """
 )
 
@@ -538,8 +543,8 @@ else:
         1. Score each customer under every campaign action.
         2. Estimate incremental expected profit.
         3. Rank customers by expected economic benefit.
-        4. Select the best customers subject to a maximum
-           email limit.
+        4. Select the best customers under either a campaign
+           capacity limit or a dollar budget.
         """
     )
 
@@ -687,17 +692,81 @@ else:
 
 
         # -------------------------------------------------
+        # Optimization constraint
+        # -------------------------------------------------
+
+        st.subheader("Optimization Constraint")
+
+        optimization_mode = st.radio(
+            "How should campaign size be limited?",
+            options=[
+                "Maximum Emails",
+                "Dollar Budget",
+            ],
+            horizontal=True,
+        )
+
+
+        st.caption(
+            """
+            **Maximum Emails** limits the number of customers
+            contacted.
+
+            **Dollar Budget** limits total campaign spending
+            based on the cost per email.
+            """
+        )
+
+
+        st.divider()
+
+
+        # -------------------------------------------------
         # Campaign settings
         # -------------------------------------------------
 
         st.subheader("Campaign Settings")
 
-        settings_col1, \
-            settings_col2, \
-            settings_col3 = st.columns(3)
+
+        # Shared business assumptions.
+
+        settings_col1, settings_col2 = st.columns(2)
 
 
         with settings_col1:
+
+            batch_email_cost = st.number_input(
+                "Email Cost per Customer ($)",
+                min_value=0.0,
+                value=0.01,
+                step=0.01,
+                format="%.2f",
+                key="batch_email_cost",
+            )
+
+
+        with settings_col2:
+
+            batch_margin_percent = st.number_input(
+                "Gross Margin (%)",
+                min_value=0.0,
+                max_value=100.0,
+                value=40.0,
+                step=1.0,
+                key="batch_margin",
+            )
+
+
+        batch_gross_margin = (
+            batch_margin_percent / 100.0
+        )
+
+
+        # -------------------------------------------------
+        # Capacity-specific setting
+        # -------------------------------------------------
+
+        if optimization_mode == "Maximum Emails":
 
             max_emails = st.number_input(
                 "Maximum Emails",
@@ -713,33 +782,54 @@ else:
             )
 
 
-        with settings_col2:
+        # -------------------------------------------------
+        # Dollar-budget-specific setting
+        # -------------------------------------------------
 
-            batch_email_cost = st.number_input(
-                "Email Cost per Customer ($)",
+        else:
+
+            campaign_budget = st.number_input(
+                "Total Campaign Budget ($)",
                 min_value=0.0,
-                value=0.01,
-                step=0.01,
+                value=10.00,
+                step=1.00,
                 format="%.2f",
-                key="batch_email_cost",
+                help=(
+                    "Maximum total amount the business "
+                    "is willing to spend on email sends."
+                ),
             )
 
 
-        with settings_col3:
+            # Show implied affordable capacity immediately.
 
-            batch_margin_percent = st.number_input(
-                "Gross Margin (%)",
-                min_value=0.0,
-                max_value=100.0,
-                value=40.0,
-                step=1.0,
-                key="batch_margin",
-            )
+            if batch_email_cost > 0:
 
+                affordable_preview = int(
+                    campaign_budget
+                    //
+                    batch_email_cost
+                )
 
-        batch_gross_margin = (
-            batch_margin_percent / 100.0
-        )
+                affordable_preview = min(
+                    affordable_preview,
+                    len(customers_df),
+                )
+
+                st.caption(
+                    "At the current email cost, this budget "
+                    f"can fund up to **{affordable_preview:,} "
+                    "emails** in this uploaded customer batch."
+                )
+
+            else:
+
+                st.caption(
+                    """
+                    Email cost is $0.00, so the dollar budget
+                    does not limit campaign capacity.
+                    """
+                )
 
 
         st.divider()
@@ -810,23 +900,60 @@ else:
             )
 
 
-            campaign_request = {
-                "customers":
-                    customer_records,
+            # ---------------------------------------------
+            # Build API request based on constraint mode
+            # ---------------------------------------------
 
-                "max_emails":
-                    int(max_emails),
+            if optimization_mode == "Maximum Emails":
 
-                "email_cost":
-                    float(
-                        batch_email_cost
-                    ),
+                campaign_request = {
+                    "customers":
+                        customer_records,
 
-                "gross_margin":
-                    float(
-                        batch_gross_margin
-                    ),
-            }
+                    "max_emails":
+                        int(max_emails),
+
+                    "email_cost":
+                        float(
+                            batch_email_cost
+                        ),
+
+                    "gross_margin":
+                        float(
+                            batch_gross_margin
+                        ),
+                }
+
+                endpoint = (
+                    f"{API_URL}/optimize-campaign"
+                )
+
+
+            else:
+
+                campaign_request = {
+                    "customers":
+                        customer_records,
+
+                    "campaign_budget":
+                        float(
+                            campaign_budget
+                        ),
+
+                    "email_cost":
+                        float(
+                            batch_email_cost
+                        ),
+
+                    "gross_margin":
+                        float(
+                            batch_gross_margin
+                        ),
+                }
+
+                endpoint = (
+                    f"{API_URL}/optimize-campaign-budget"
+                )
 
 
             try:
@@ -837,7 +964,7 @@ else:
                 ):
 
                     response = httpx.post(
-                        f"{API_URL}/optimize-campaign",
+                        endpoint,
                         json=campaign_request,
                         timeout=60.0,
                     )
@@ -871,6 +998,10 @@ else:
                 )
 
 
+                # -----------------------------------------
+                # Basic campaign metrics
+                # -----------------------------------------
+
                 summary_col1, \
                     summary_col2, \
                     summary_col3 = st.columns(3)
@@ -898,13 +1029,32 @@ else:
 
                 with summary_col3:
 
-                    st.metric(
-                        "Campaign Capacity",
-                        summary[
-                            "max_emails"
-                        ],
-                    )
+                    if (
+                        optimization_mode
+                        ==
+                        "Maximum Emails"
+                    ):
 
+                        st.metric(
+                            "Campaign Capacity",
+                            summary[
+                                "max_emails"
+                            ],
+                        )
+
+                    else:
+
+                        st.metric(
+                            "Max Affordable Emails",
+                            summary[
+                                "max_affordable_emails"
+                            ],
+                        )
+
+
+                # -----------------------------------------
+                # Profit metrics
+                # -----------------------------------------
 
                 profit_col1, \
                     profit_col2, \
@@ -936,6 +1086,79 @@ else:
                         "$"
                         f"{summary['incremental_expected_profit']:.2f}",
                     )
+
+
+                # -----------------------------------------
+                # Budget-specific metrics
+                # -----------------------------------------
+
+                if optimization_mode == "Dollar Budget":
+
+                    st.subheader(
+                        "Budget Utilization"
+                    )
+
+                    budget_col1, \
+                        budget_col2, \
+                        budget_col3 = st.columns(3)
+
+
+                    with budget_col1:
+
+                        st.metric(
+                            "Campaign Budget",
+                            "$"
+                            f"{summary['campaign_budget']:.2f}",
+                        )
+
+
+                    with budget_col2:
+
+                        st.metric(
+                            "Campaign Spend",
+                            "$"
+                            f"{summary['campaign_spend']:.2f}",
+                        )
+
+
+                    with budget_col3:
+
+                        st.metric(
+                            "Budget Remaining",
+                            "$"
+                            f"{summary['budget_remaining']:.2f}",
+                        )
+
+
+                    # -------------------------------------
+                    # Budget utilization percentage
+                    # -------------------------------------
+
+                    if summary["campaign_budget"] > 0:
+
+                        budget_utilization = (
+                            summary["campaign_spend"]
+                            /
+                            summary["campaign_budget"]
+                        )
+
+                        st.progress(
+                            min(
+                                budget_utilization,
+                                1.0,
+                            )
+                        )
+
+                        st.caption(
+                            "Budget utilization: "
+                            f"{budget_utilization:.1%}"
+                        )
+
+                    elif summary["campaign_spend"] == 0:
+
+                        st.caption(
+                            "Budget utilization: 0.0%"
+                        )
 
 
                 st.divider()
@@ -1037,20 +1260,42 @@ else:
                 # Interpretation
                 # -----------------------------------------
 
-                st.info(
-                    """
-                    The optimizer ranks customers by
-                    **incremental expected profit**.
+                if optimization_mode == "Dollar Budget":
 
-                    Customers with negative incremental
-                    expected profit are not contacted even
-                    if unused campaign capacity remains.
+                    st.info(
+                        """
+                        The optimizer converts the available
+                        dollar budget into an affordable email
+                        capacity using the selected per-email
+                        cost.
 
-                    These values are model-based decision
-                    estimates and should be validated in
-                    future randomized campaigns.
-                    """
-                )
+                        It then ranks customers by
+                        **incremental expected profit** and
+                        selects the strongest profitable
+                        customers first.
+
+                        A campaign may leave some budget unused
+                        when additional emails are predicted to
+                        reduce expected profit.
+                        """
+                    )
+
+                else:
+
+                    st.info(
+                        """
+                        The optimizer ranks customers by
+                        **incremental expected profit**.
+
+                        Customers with negative incremental
+                        expected profit are not contacted even
+                        if unused campaign capacity remains.
+
+                        These values are model-based decision
+                        estimates and should be validated in
+                        future randomized campaigns.
+                        """
+                    )
 
 
             except httpx.RequestError:

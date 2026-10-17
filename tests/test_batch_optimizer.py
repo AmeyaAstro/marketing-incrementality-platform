@@ -2,7 +2,12 @@
 Tests for batch customer scoring and
 budget-constrained campaign optimization.
 """
-
+from src.batch_optimizer import (  # noqa: E402
+    derive_purchase_preference,
+    optimize_campaign_budget,
+    optimize_email_budget,
+    score_customer_batch,
+)
 import sys
 from pathlib import Path
 
@@ -245,3 +250,119 @@ def test_invalid_purchase_history_is_rejected():
         raise AssertionError(
             "Expected ValueError was not raised."
         )
+
+# ---------------------------------------------------------
+# Test 6:
+# dollar budget should limit campaign spending
+# ---------------------------------------------------------
+
+def test_campaign_budget_respects_dollar_limit():
+
+    artifacts = load_artifacts()
+
+    scored = score_customer_batch(
+        TEST_CUSTOMERS,
+        artifacts,
+        email_cost=0.50,
+        gross_margin=0.40,
+    )
+
+    result = optimize_campaign_budget(
+        scored,
+        campaign_budget=1.00,
+        email_cost=0.50,
+    )
+
+    summary = result[
+        "summary"
+    ]
+
+    assert (
+        summary["campaign_spend"]
+        <=
+        summary["campaign_budget"]
+    )
+
+    assert (
+        summary["max_affordable_emails"]
+        ==
+        2
+    )
+
+
+# ---------------------------------------------------------
+# Test 7:
+# zero-dollar budget should select no paid emails
+# ---------------------------------------------------------
+
+def test_zero_campaign_budget():
+
+    artifacts = load_artifacts()
+
+    scored = score_customer_batch(
+        TEST_CUSTOMERS,
+        artifacts,
+        email_cost=0.50,
+        gross_margin=0.40,
+    )
+
+    result = optimize_campaign_budget(
+        scored,
+        campaign_budget=0.0,
+        email_cost=0.50,
+    )
+
+    summary = result[
+        "summary"
+    ]
+
+    assert (
+        summary["emails_selected"]
+        ==
+        0
+    )
+
+    assert (
+        summary["campaign_spend"]
+        ==
+        0.0
+    )
+
+
+# ---------------------------------------------------------
+# Test 8:
+# free email should not be restricted by dollar budget
+# ---------------------------------------------------------
+
+def test_zero_email_cost():
+
+    artifacts = load_artifacts()
+
+    scored = score_customer_batch(
+        TEST_CUSTOMERS,
+        artifacts,
+        email_cost=0.0,
+        gross_margin=0.40,
+    )
+
+    result = optimize_campaign_budget(
+        scored,
+        campaign_budget=0.0,
+        email_cost=0.0,
+    )
+
+    summary = result[
+        "summary"
+    ]
+
+    assert (
+        summary["max_affordable_emails"]
+        ==
+        len(TEST_CUSTOMERS)
+    )
+
+    assert (
+        summary["campaign_spend"]
+        ==
+        0.0
+    )
