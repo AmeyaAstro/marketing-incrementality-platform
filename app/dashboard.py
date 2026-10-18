@@ -15,6 +15,7 @@ The frontend communicates with the FastAPI backend.
 """
 
 import io
+import os
 
 import httpx
 import pandas as pd
@@ -36,8 +37,10 @@ st.set_page_config(
 # API configuration
 # ---------------------------------------------------------
 
-API_URL = "http://127.0.0.1:8000"
-
+API_URL = os.getenv(
+    "API_URL",
+    "http://127.0.0.1:8000",
+)
 
 # ---------------------------------------------------------
 # Dashboard title
