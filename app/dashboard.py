@@ -140,6 +140,36 @@ if mode == "Experiment Insights":
             "+$0.77 / customer",
         )
 
+    st.subheader("Randomized Treatment Allocation")
+
+    allocation_chart = px.pie(
+        experiment_df,
+        names="Treatment",
+        values="Customers",
+        hole=0.55,
+        title="Customer Allocation Across Randomized Treatments",
+    )
+
+    allocation_chart.update_traces(
+        textposition="inside",
+        textinfo="percent+label",
+    )
+
+    allocation_chart.update_layout(
+        margin=dict(
+            l=20,
+            r=20,
+            t=60,
+            b=20,
+        ),
+        legend_title_text="Treatment",
+    )
+
+    st.plotly_chart(
+        allocation_chart,
+        use_container_width=True,
+    )
+
     st.divider()
 
     st.subheader("Randomized Treatment Performance")
@@ -1740,6 +1770,101 @@ else:
                         st.caption(
                             "Budget utilization: 0.0%"
                         )
+
+
+                # -----------------------------------------
+                # Live campaign composition charts
+                # -----------------------------------------
+
+                st.subheader("Campaign Composition")
+
+                composition_col1, composition_col2 = (
+                    st.columns(2)
+                )
+
+                selection_counts = (
+                    recommendations_df[
+                        "selected_for_campaign"
+                    ]
+                    .map(
+                        {
+                            True: "Selected",
+                            False: "Not Selected",
+                        }
+                    )
+                    .value_counts()
+                    .rename_axis("Status")
+                    .reset_index(name="Customers")
+                )
+
+                with composition_col1:
+
+                    selection_pie = px.pie(
+                        selection_counts,
+                        names="Status",
+                        values="Customers",
+                        hole=0.55,
+                        title="Campaign Selection Mix",
+                    )
+
+                    selection_pie.update_traces(
+                        textposition="inside",
+                        textinfo="percent+label",
+                    )
+
+                    selection_pie.update_layout(
+                        margin=dict(
+                            l=10,
+                            r=10,
+                            t=60,
+                            b=10,
+                        ),
+                        legend_title_text="Status",
+                    )
+
+                    st.plotly_chart(
+                        selection_pie,
+                        use_container_width=True,
+                    )
+
+                action_counts = (
+                    recommendations_df[
+                        "final_recommended_action"
+                    ]
+                    .value_counts()
+                    .rename_axis("Action")
+                    .reset_index(name="Customers")
+                )
+
+                with composition_col2:
+
+                    action_pie = px.pie(
+                        action_counts,
+                        names="Action",
+                        values="Customers",
+                        hole=0.55,
+                        title="Final Recommended Action Mix",
+                    )
+
+                    action_pie.update_traces(
+                        textposition="inside",
+                        textinfo="percent+label",
+                    )
+
+                    action_pie.update_layout(
+                        margin=dict(
+                            l=10,
+                            r=10,
+                            t=60,
+                            b=10,
+                        ),
+                        legend_title_text="Action",
+                    )
+
+                    st.plotly_chart(
+                        action_pie,
+                        use_container_width=True,
+                    )
 
 
                 st.divider()
