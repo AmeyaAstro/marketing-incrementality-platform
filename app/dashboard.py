@@ -19,6 +19,7 @@ import os
 
 import httpx
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 
@@ -489,6 +490,199 @@ if mode == "Single Customer Recommendation":
                     "Women's E-Mail",
                     f"${profit['Womens E-Mail']:.2f}",
                 )
+
+
+            # ---------------------------------------------
+            # Interactive treatment comparison
+            # ---------------------------------------------
+
+            st.divider()
+
+            st.subheader("Treatment Comparison")
+
+            st.caption(
+                "Compare the customer's predicted outcome "
+                "under each available marketing action."
+            )
+
+            comparison_metric = st.selectbox(
+                "Metric",
+                options=[
+                    "Conversion Probability",
+                    "Expected Spend",
+                    "Expected Profit",
+                ],
+                key="single_customer_comparison_metric",
+            )
+
+            if comparison_metric == "Conversion Probability":
+
+                comparison_df = pd.DataFrame(
+                    {
+                        "Treatment": [
+                            "No E-Mail",
+                            "Mens E-Mail",
+                            "Womens E-Mail",
+                        ],
+                        "Value": [
+                            probabilities["No E-Mail"] * 100,
+                            probabilities["Mens E-Mail"] * 100,
+                            probabilities["Womens E-Mail"] * 100,
+                        ],
+                    }
+                )
+
+                chart_title = (
+                    "Predicted Conversion Probability"
+                )
+
+                y_axis_label = (
+                    "Conversion Probability (%)"
+                )
+
+                text_template = "%{text:.2f}%"
+
+            elif comparison_metric == "Expected Spend":
+
+                comparison_df = pd.DataFrame(
+                    {
+                        "Treatment": [
+                            "No E-Mail",
+                            "Mens E-Mail",
+                            "Womens E-Mail",
+                        ],
+                        "Value": [
+                            spend["No E-Mail"],
+                            spend["Mens E-Mail"],
+                            spend["Womens E-Mail"],
+                        ],
+                    }
+                )
+
+                chart_title = (
+                    "Predicted Expected Spend per Customer"
+                )
+
+                y_axis_label = (
+                    "Expected Spend ($)"
+                )
+
+                text_template = "$%{text:.2f}"
+
+            else:
+
+                comparison_df = pd.DataFrame(
+                    {
+                        "Treatment": [
+                            "No E-Mail",
+                            "Mens E-Mail",
+                            "Womens E-Mail",
+                        ],
+                        "Value": [
+                            profit["No E-Mail"],
+                            profit["Mens E-Mail"],
+                            profit["Womens E-Mail"],
+                        ],
+                    }
+                )
+
+                chart_title = (
+                    "Predicted Expected Profit per Customer"
+                )
+
+                y_axis_label = (
+                    "Expected Profit ($)"
+                )
+
+                text_template = "$%{text:.2f}"
+
+            comparison_chart = px.bar(
+                comparison_df,
+                x="Treatment",
+                y="Value",
+                text="Value",
+                title=chart_title,
+            )
+
+            comparison_chart.update_traces(
+                texttemplate=text_template,
+                textposition="outside",
+                cliponaxis=False,
+            )
+
+            comparison_chart.update_layout(
+                xaxis_title="Treatment",
+                yaxis_title=y_axis_label,
+                showlegend=False,
+                margin=dict(
+                    l=20,
+                    r=20,
+                    t=60,
+                    b=20,
+                ),
+            )
+
+            st.plotly_chart(
+                comparison_chart,
+                use_container_width=True,
+            )
+
+
+            # ---------------------------------------------
+            # Uplift visualization
+            # ---------------------------------------------
+
+            st.subheader("Estimated Conversion Uplift")
+
+            uplift_chart_df = pd.DataFrame(
+                {
+                    "Treatment": [
+                        "Mens E-Mail",
+                        "Womens E-Mail",
+                    ],
+                    "Uplift": [
+                        uplift["Mens E-Mail"] * 100,
+                        uplift["Womens E-Mail"] * 100,
+                    ],
+                }
+            )
+
+            uplift_chart = px.bar(
+                uplift_chart_df,
+                x="Treatment",
+                y="Uplift",
+                text="Uplift",
+                title="Estimated Uplift vs No E-Mail",
+            )
+
+            uplift_chart.update_traces(
+                texttemplate="%{text:+.2f} pp",
+                textposition="outside",
+                cliponaxis=False,
+            )
+
+            uplift_chart.add_hline(
+                y=0,
+                line_dash="dash",
+                annotation_text="No incremental effect",
+            )
+
+            uplift_chart.update_layout(
+                xaxis_title="Treatment",
+                yaxis_title="Conversion Uplift (percentage points)",
+                showlegend=False,
+                margin=dict(
+                    l=20,
+                    r=20,
+                    t=60,
+                    b=20,
+                ),
+            )
+
+            st.plotly_chart(
+                uplift_chart,
+                use_container_width=True,
+            )
 
 
             # ---------------------------------------------
