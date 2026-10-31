@@ -1286,6 +1286,154 @@ else:
 
 
                 # -----------------------------------------
+                # Campaign profit comparison chart
+                # -----------------------------------------
+
+                st.subheader(
+                    "Campaign Profit Comparison"
+                )
+
+                campaign_profit_df = pd.DataFrame(
+                    {
+                        "Scenario": [
+                            "Baseline",
+                            "Optimized",
+                        ],
+                        "Expected Profit": [
+                            summary[
+                                "baseline_expected_profit"
+                            ],
+                            summary[
+                                "optimized_expected_profit"
+                            ],
+                        ],
+                    }
+                )
+
+                campaign_profit_chart = px.bar(
+                    campaign_profit_df,
+                    x="Scenario",
+                    y="Expected Profit",
+                    text="Expected Profit",
+                    title=(
+                        "Baseline vs Optimized "
+                        "Expected Profit"
+                    ),
+                )
+
+                campaign_profit_chart.update_traces(
+                    texttemplate="$%{text:.2f}",
+                    textposition="outside",
+                    cliponaxis=False,
+                )
+
+                campaign_profit_chart.update_layout(
+                    xaxis_title="Scenario",
+                    yaxis_title="Expected Profit ($)",
+                    showlegend=False,
+                    margin=dict(
+                        l=20,
+                        r=20,
+                        t=60,
+                        b=20,
+                    ),
+                )
+
+                st.plotly_chart(
+                    campaign_profit_chart,
+                    use_container_width=True,
+                )
+
+
+                # -----------------------------------------
+                # Incremental profit ranking chart
+                # -----------------------------------------
+
+                st.subheader(
+                    "Customer Incremental Profit Ranking"
+                )
+
+                ranking_df = (
+                    recommendations_df[
+                        [
+                            "batch_row",
+                            "incremental_profit",
+                            "selected_for_campaign",
+                        ]
+                    ]
+                    .copy()
+                    .sort_values(
+                        "incremental_profit",
+                        ascending=False,
+                    )
+                )
+
+                ranking_df["Customer"] = (
+                    "Customer "
+                    +
+                    ranking_df[
+                        "batch_row"
+                    ]
+                    .astype(str)
+                )
+
+                ranking_df["Campaign Status"] = (
+                    ranking_df[
+                        "selected_for_campaign"
+                    ]
+                    .map(
+                        {
+                            True: "Selected",
+                            False: "Not Selected",
+                        }
+                    )
+                )
+
+                ranking_chart = px.bar(
+                    ranking_df,
+                    x="Customer",
+                    y="incremental_profit",
+                    color="Campaign Status",
+                    text="incremental_profit",
+                    title=(
+                        "Customers Ranked by "
+                        "Incremental Expected Profit"
+                    ),
+                )
+
+                ranking_chart.update_traces(
+                    texttemplate="$%{text:.2f}",
+                    textposition="outside",
+                    cliponaxis=False,
+                )
+
+                ranking_chart.add_hline(
+                    y=0,
+                    line_dash="dash",
+                    annotation_text="Break-even",
+                )
+
+                ranking_chart.update_layout(
+                    xaxis_title="Customer",
+                    yaxis_title=(
+                        "Incremental Expected Profit ($)"
+                    ),
+                    legend_title_text="Campaign Status",
+                    margin=dict(
+                        l=20,
+                        r=20,
+                        t=60,
+                        b=20,
+                    ),
+                )
+
+                st.plotly_chart(
+                    ranking_chart,
+                    use_container_width=True,
+                )
+
+
+                # -----------------------------------------
                 # Budget-specific metrics
                 # -----------------------------------------
 
