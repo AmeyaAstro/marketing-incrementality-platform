@@ -198,37 +198,6 @@ if mode == "Experiment Insights":
             "+$0.77 / customer",
         )
 
-    st.subheader("Randomized Treatment Allocation")
-
-    allocation_chart = px.pie(
-        experiment_df,
-        names="Treatment",
-        values="Customers",
-        hole=0.55,
-        title="Customer Allocation Across Randomized Treatments",
-        template=chart_template,
-    )
-
-    allocation_chart.update_traces(
-        textposition="inside",
-        textinfo="percent+label",
-    )
-
-    allocation_chart.update_layout(
-        margin=dict(
-            l=20,
-            r=20,
-            t=60,
-            b=20,
-        ),
-        legend_title_text="Treatment",
-    )
-
-    st.plotly_chart(
-        allocation_chart,
-        use_container_width=True,
-    )
-
     st.divider()
 
     st.subheader("Randomized Treatment Performance")
@@ -355,58 +324,6 @@ if mode == "Experiment Insights":
     st.plotly_chart(
         lift_chart,
         use_container_width=True,
-    )
-
-    st.subheader("Estimated Incremental Revenue Contribution")
-
-    incremental_revenue_df = pd.DataFrame(
-        {
-            "Treatment": [
-                "Mens E-Mail",
-                "Womens E-Mail",
-            ],
-            "Incremental Revenue": [
-                16402.71,
-                9076.90,
-            ],
-        }
-    )
-
-    incremental_revenue_chart = px.pie(
-        incremental_revenue_df,
-        names="Treatment",
-        values="Incremental Revenue",
-        hole=0.55,
-        title=(
-            "Share of Estimated Incremental "
-            "Experimental Revenue"
-        ),
-        template=chart_template,
-    )
-
-    incremental_revenue_chart.update_traces(
-        textposition="inside",
-        textinfo="percent+label",
-    )
-
-    incremental_revenue_chart.update_layout(
-        margin=dict(
-            l=20,
-            r=20,
-            t=60,
-            b=20,
-        ),
-        legend_title_text="Treatment",
-    )
-
-    st.plotly_chart(
-        incremental_revenue_chart,
-        use_container_width=True,
-    )
-
-    st.caption(
-        "These values are aggregate experimental revenue "
-        "estimates, not accounting profit."
     )
 
     st.subheader("Uncertainty in Spend Lift")
