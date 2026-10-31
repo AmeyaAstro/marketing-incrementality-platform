@@ -67,6 +67,7 @@ st.divider()
 mode = st.radio(
     "Choose workflow",
     options=[
+        "Experiment Insights",
         "Single Customer Recommendation",
         "Batch Campaign Optimizer",
     ],
@@ -75,10 +76,245 @@ mode = st.radio(
 
 
 # =========================================================
+# EXPERIMENT INSIGHTS MODE
+# =========================================================
+
+if mode == "Experiment Insights":
+
+    st.header("Experiment Insights")
+
+    st.write(
+        """
+        Explore the randomized Hillstrom email experiment
+        that motivates the production decision system.
+        """
+    )
+
+    experiment_df = pd.DataFrame(
+        {
+            "Treatment": [
+                "No E-Mail",
+                "Mens E-Mail",
+                "Womens E-Mail",
+            ],
+            "Customers": [
+                21306,
+                21307,
+                21387,
+            ],
+            "Visit Rate (%)": [
+                10.6167,
+                18.2757,
+                15.1400,
+            ],
+            "Conversion Rate (%)": [
+                0.5726,
+                1.2531,
+                0.8837,
+            ],
+            "Avg Spend per Customer ($)": [
+                0.652789,
+                1.422617,
+                1.077202,
+            ],
+        }
+    )
+
+    summary_col1, summary_col2, summary_col3 = st.columns(3)
+
+    with summary_col1:
+        st.metric(
+            "Experiment Size",
+            "64,000 customers",
+        )
+
+    with summary_col2:
+        st.metric(
+            "Strongest Fixed Treatment",
+            "Mens E-Mail",
+        )
+
+    with summary_col3:
+        st.metric(
+            "Mens Spend Lift vs Control",
+            "+$0.77 / customer",
+        )
+
+    st.divider()
+
+    st.subheader("Randomized Treatment Performance")
+
+    experiment_metric = st.selectbox(
+        "Metric",
+        options=[
+            "Visit Rate (%)",
+            "Conversion Rate (%)",
+            "Avg Spend per Customer ($)",
+        ],
+        key="experiment_metric",
+    )
+
+    experiment_chart = px.bar(
+        experiment_df,
+        x="Treatment",
+        y=experiment_metric,
+        text=experiment_metric,
+        title=(
+            f"{experiment_metric} by Randomized Treatment"
+        ),
+    )
+
+    if "%" in experiment_metric:
+        experiment_chart.update_traces(
+            texttemplate="%{text:.2f}%",
+            textposition="outside",
+            cliponaxis=False,
+        )
+    else:
+        experiment_chart.update_traces(
+            texttemplate="$%{text:.2f}",
+            textposition="outside",
+            cliponaxis=False,
+        )
+
+    experiment_chart.update_layout(
+        xaxis_title="Treatment",
+        yaxis_title=experiment_metric,
+        showlegend=False,
+        margin=dict(
+            l=20,
+            r=20,
+            t=60,
+            b=20,
+        ),
+    )
+
+    st.plotly_chart(
+        experiment_chart,
+        use_container_width=True,
+    )
+
+    st.subheader("Incremental Lift vs No E-Mail")
+
+    lift_df = pd.DataFrame(
+        {
+            "Treatment": [
+                "Mens E-Mail",
+                "Womens E-Mail",
+            ],
+            "Conversion Lift (pp)": [
+                0.6805,
+                0.3111,
+            ],
+            "Spend Lift ($/customer)": [
+                0.769827,
+                0.424412,
+            ],
+        }
+    )
+
+    lift_metric = st.selectbox(
+        "Lift metric",
+        options=[
+            "Conversion Lift (pp)",
+            "Spend Lift ($/customer)",
+        ],
+        key="experiment_lift_metric",
+    )
+
+    lift_chart = px.bar(
+        lift_df,
+        x="Treatment",
+        y=lift_metric,
+        text=lift_metric,
+        title=f"{lift_metric} vs No E-Mail",
+    )
+
+    if lift_metric == "Conversion Lift (pp)":
+        lift_chart.update_traces(
+            texttemplate="%{text:+.2f} pp",
+            textposition="outside",
+            cliponaxis=False,
+        )
+    else:
+        lift_chart.update_traces(
+            texttemplate="$%{text:+.2f}",
+            textposition="outside",
+            cliponaxis=False,
+        )
+
+    lift_chart.add_hline(
+        y=0,
+        line_dash="dash",
+        annotation_text="No lift",
+    )
+
+    lift_chart.update_layout(
+        xaxis_title="Treatment",
+        yaxis_title=lift_metric,
+        showlegend=False,
+        margin=dict(
+            l=20,
+            r=20,
+            t=60,
+            b=20,
+        ),
+    )
+
+    st.plotly_chart(
+        lift_chart,
+        use_container_width=True,
+    )
+
+    st.subheader("Uncertainty in Spend Lift")
+
+    ci_df = pd.DataFrame(
+        {
+            "Treatment": [
+                "Mens E-Mail",
+                "Womens E-Mail",
+            ],
+            "Spend Lift": [
+                0.769827,
+                0.424412,
+            ],
+            "Lower 95% CI": [
+                0.485149,
+                0.168965,
+            ],
+            "Upper 95% CI": [
+                1.054505,
+                0.679860,
+            ],
+        }
+    )
+
+    st.dataframe(
+        ci_df,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.info(
+        """
+        Because treatment assignment was randomized, these
+        treatment-level comparisons have a causal experimental
+        interpretation at the aggregate level.
+
+        The production uplift model goes one step further by
+        estimating heterogeneous treatment effects for ranking,
+        but those individual uplift estimates are model-based
+        and should be treated as decision support rather than
+        observed causal truth.
+        """
+    )
+
+
+# =========================================================
 # SINGLE CUSTOMER MODE
 # =========================================================
 
-if mode == "Single Customer Recommendation":
+elif mode == "Single Customer Recommendation":
 
     st.header("Single Customer Recommendation")
 
