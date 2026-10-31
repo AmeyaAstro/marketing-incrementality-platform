@@ -43,6 +43,64 @@ API_URL = os.getenv(
     "http://127.0.0.1:8000",
 )
 
+
+# ---------------------------------------------------------
+# Appearance
+# ---------------------------------------------------------
+
+with st.sidebar:
+
+    st.header("Appearance")
+
+    dark_mode = st.toggle(
+        "Dark Mode",
+        value=False,
+        help="Switch the dashboard and charts to a dark theme.",
+    )
+
+
+if dark_mode:
+
+    st.markdown(
+        """
+        <style>
+        .stApp {
+            background-color: #0E1117;
+            color: #FAFAFA;
+        }
+
+        [data-testid="stSidebar"] {
+            background-color: #161B22;
+        }
+
+        [data-testid="stMetric"] {
+            background-color: #161B22;
+            border: 1px solid #30363D;
+            padding: 0.9rem;
+            border-radius: 0.75rem;
+        }
+
+        [data-testid="stDataFrame"] {
+            border: 1px solid #30363D;
+            border-radius: 0.5rem;
+        }
+
+        div[data-baseweb="select"] > div,
+        div[data-baseweb="input"] > div {
+            background-color: #161B22;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    chart_template = "plotly_dark"
+
+else:
+
+    chart_template = "plotly_white"
+
+
 # ---------------------------------------------------------
 # Dashboard title
 # ---------------------------------------------------------
@@ -148,6 +206,7 @@ if mode == "Experiment Insights":
         values="Customers",
         hole=0.55,
         title="Customer Allocation Across Randomized Treatments",
+        template=chart_template,
     )
 
     allocation_chart.update_traces(
@@ -192,6 +251,7 @@ if mode == "Experiment Insights":
         title=(
             f"{experiment_metric} by Randomized Treatment"
         ),
+        template=chart_template,
     )
 
     if "%" in experiment_metric:
@@ -258,6 +318,7 @@ if mode == "Experiment Insights":
         y=lift_metric,
         text=lift_metric,
         title=f"{lift_metric} vs No E-Mail",
+        template=chart_template,
     )
 
     if lift_metric == "Conversion Lift (pp)":
@@ -294,6 +355,58 @@ if mode == "Experiment Insights":
     st.plotly_chart(
         lift_chart,
         use_container_width=True,
+    )
+
+    st.subheader("Estimated Incremental Revenue Contribution")
+
+    incremental_revenue_df = pd.DataFrame(
+        {
+            "Treatment": [
+                "Mens E-Mail",
+                "Womens E-Mail",
+            ],
+            "Incremental Revenue": [
+                16402.71,
+                9076.90,
+            ],
+        }
+    )
+
+    incremental_revenue_chart = px.pie(
+        incremental_revenue_df,
+        names="Treatment",
+        values="Incremental Revenue",
+        hole=0.55,
+        title=(
+            "Share of Estimated Incremental "
+            "Experimental Revenue"
+        ),
+        template=chart_template,
+    )
+
+    incremental_revenue_chart.update_traces(
+        textposition="inside",
+        textinfo="percent+label",
+    )
+
+    incremental_revenue_chart.update_layout(
+        margin=dict(
+            l=20,
+            r=20,
+            t=60,
+            b=20,
+        ),
+        legend_title_text="Treatment",
+    )
+
+    st.plotly_chart(
+        incremental_revenue_chart,
+        use_container_width=True,
+    )
+
+    st.caption(
+        "These values are aggregate experimental revenue "
+        "estimates, not accounting profit."
     )
 
     st.subheader("Uncertainty in Spend Lift")
@@ -868,6 +981,7 @@ elif mode == "Single Customer Recommendation":
                 y="Value",
                 text="Value",
                 title=chart_title,
+                template=chart_template,
             )
 
             comparison_chart.update_traces(
@@ -919,6 +1033,7 @@ elif mode == "Single Customer Recommendation":
                 y="Uplift",
                 text="Uplift",
                 title="Estimated Uplift vs No E-Mail",
+                template=chart_template,
             )
 
             uplift_chart.update_traces(
@@ -1585,6 +1700,7 @@ else:
                         "Baseline vs Optimized "
                         "Expected Profit"
                     ),
+                    template=chart_template,
                 )
 
                 campaign_profit_chart.update_traces(
@@ -1665,6 +1781,7 @@ else:
                         "Customers Ranked by "
                         "Incremental Expected Profit"
                     ),
+                    template=chart_template,
                 )
 
                 ranking_chart.update_traces(
@@ -1771,6 +1888,48 @@ else:
                             "Budget utilization: 0.0%"
                         )
 
+                    budget_mix_df = pd.DataFrame(
+                        {
+                            "Category": [
+                                "Campaign Spend",
+                                "Budget Remaining",
+                            ],
+                            "Amount": [
+                                summary["campaign_spend"],
+                                summary["budget_remaining"],
+                            ],
+                        }
+                    )
+
+                    budget_mix_chart = px.pie(
+                        budget_mix_df,
+                        names="Category",
+                        values="Amount",
+                        hole=0.60,
+                        title="Budget Used vs Remaining",
+                        template=chart_template,
+                    )
+
+                    budget_mix_chart.update_traces(
+                        textposition="inside",
+                        textinfo="percent+label",
+                    )
+
+                    budget_mix_chart.update_layout(
+                        margin=dict(
+                            l=20,
+                            r=20,
+                            t=60,
+                            b=20,
+                        ),
+                        legend_title_text="Budget",
+                    )
+
+                    st.plotly_chart(
+                        budget_mix_chart,
+                        use_container_width=True,
+                    )
+
 
                 # -----------------------------------------
                 # Live campaign composition charts
@@ -1805,6 +1964,7 @@ else:
                         values="Customers",
                         hole=0.55,
                         title="Campaign Selection Mix",
+                        template=chart_template,
                     )
 
                     selection_pie.update_traces(
@@ -1844,6 +2004,7 @@ else:
                         values="Customers",
                         hole=0.55,
                         title="Final Recommended Action Mix",
+                        template=chart_template,
                     )
 
                     action_pie.update_traces(
@@ -1863,6 +2024,58 @@ else:
 
                     st.plotly_chart(
                         action_pie,
+                        use_container_width=True,
+                    )
+
+
+                selected_actions_df = (
+                    recommendations_df[
+                        recommendations_df[
+                            "selected_for_campaign"
+                        ]
+                    ][
+                        "final_recommended_action"
+                    ]
+                    .value_counts()
+                    .rename_axis("Action")
+                    .reset_index(name="Customers")
+                )
+
+                if not selected_actions_df.empty:
+
+                    st.subheader(
+                        "Selected Campaign Treatment Mix"
+                    )
+
+                    selected_actions_pie = px.pie(
+                        selected_actions_df,
+                        names="Action",
+                        values="Customers",
+                        hole=0.60,
+                        title=(
+                            "Treatment Mix Among "
+                            "Selected Customers"
+                        ),
+                        template=chart_template,
+                    )
+
+                    selected_actions_pie.update_traces(
+                        textposition="inside",
+                        textinfo="percent+label",
+                    )
+
+                    selected_actions_pie.update_layout(
+                        margin=dict(
+                            l=20,
+                            r=20,
+                            t=60,
+                            b=20,
+                        ),
+                        legend_title_text="Treatment",
+                    )
+
+                    st.plotly_chart(
+                        selected_actions_pie,
                         use_container_width=True,
                     )
 
